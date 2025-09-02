@@ -6,9 +6,6 @@ services:
     container_name: backend_sd
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend/media:/app/media
-      - ./backend/videos.db:/app/videos.db
     environment:
       - FLASK_ENV=production
     restart: unless-stopped

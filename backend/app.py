@@ -7,7 +7,6 @@ import cv2
 from datetime import datetime
 import hashlib
 import mimetypes
-import datetime
 
 app = Flask(__name__)
 
@@ -15,6 +14,9 @@ MEDIA_ROOT = "media"
 DATABASE_PATH = "videos.db"
 
 def init_database():
+    if not os.path.exists(DATABASE_PATH):
+       open(DATABASE_PATH, 'w').close()        
+    
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -249,7 +251,7 @@ def get_thumbnail(video_id, thumb_type):
 
 @app.route('/', methods=['GET'])
 def index():
-    return jsonify({'timestamp': datetime.datetime.now().isoformat()})
+    return jsonify({'timestamp': datetime.now().isoformat()})
 
 if __name__ == '__main__':
     init_database()
