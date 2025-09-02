@@ -5,6 +5,11 @@ import os
 import threading
 from PIL import Image, ImageTk
 import io
+import urllib3
+import ssl
+
+# Desabilitar avisos de SSL
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class VideoProcessorClient:
     def __init__(self, root):
@@ -13,11 +18,31 @@ class VideoProcessorClient:
         self.root.geometry("550x700")
         self.root.minsize(500, 600)
 
-        self.server_url = "http://localhost:9981"
+        self.server_url = "https://api_sd3.kuatech.com.br"
         self.selected_file_path = None
         self.thumbnail_cache = {}
         self.placeholder_image = ImageTk.PhotoImage(Image.new('RGB', (120, 80), '#ddd'))
-
+        
+        # Criar sessão personalizada para requests
+        self.session = requests.Session()
+        self.session.verify = False
+        
+        try:
+            from requests.adapters import HTTPAdapter
+            from urllib3.poolmanager import PoolManager
+            
+            class SSLAdapter(HTTPAdapter):
+                def init_poolmanager(self, *args, **kwargs):
+                    context = ssl.create_default_context()
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                    kwargs['ssl_context'] = context
+                    return super().init_poolmanager(*args, **kwargs)
+            
+            self.session.mount('https://', SSLAdapter())
+        except Exception:
+            pass
+        
         self._setup_ui()
         self._load_history()
 
@@ -80,7 +105,7 @@ class VideoProcessorClient:
             with open(self.selected_file_path, 'rb') as f:
                 files = {'video': (os.path.basename(self.selected_file_path), f)}
                 data = {'filter': self.filter_var.get()}
-                response = requests.post(f"{self.server_url}/upload", files=files, data=data, timeout=300)
+                response = self.session.post(f"{self.server_url}/upload", files=files, data=data, timeout=300)
             if response.status_code == 200:
                 self.root.after(0, self._load_history)
             else:
@@ -95,7 +120,7 @@ class VideoProcessorClient:
 
     def _fetch_history(self):
         try:
-            response = requests.get(f"{self.server_url}/videos", timeout=10)
+            response = self.session.get(f"{self.server_url}/videos", timeout=10)
             if response.status_code == 200:
                 videos = response.json().get('videos', [])
                 self.root.after(0, self._populate_history, videos)
@@ -138,7 +163,7 @@ class VideoProcessorClient:
         else:
             try:
                 url = f"{self.server_url}/thumbnail/{video_id}/processed"
-                resp = requests.get(url, timeout=5)
+                resp = self.session.get(url, timeout=5)
                 if resp.status_code == 200:
                     img = Image.open(io.BytesIO(resp.content)).resize((120, 80), Image.Resampling.LANCZOS)
                     photo = ImageTk.PhotoImage(img)
@@ -153,7 +178,7 @@ class VideoProcessorClient:
     def play_video(self, video_id):
         try:
             url = f"{self.server_url}/download/{video_id}"
-            response = requests.get(url, stream=True)
+            response = self.session.get(url, stream=True)
             if response.status_code == 200:
                 temp_dir = os.path.join(os.path.expanduser("~"), "video_previews")
                 os.makedirs(temp_dir, exist_ok=True)
@@ -171,7 +196,7 @@ class VideoProcessorClient:
     def play_original_video(self, video_id):
         try:
             url = f"{self.server_url}/download/{video_id}/original"
-            response = requests.get(url, stream=True)
+            response = self.session.get(url, stream=True)
             if response.status_code == 200:
                 temp_dir = os.path.join(os.path.expanduser("~"), "video_previews")
                 os.makedirs(temp_dir, exist_ok=True)
