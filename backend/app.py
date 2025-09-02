@@ -11,9 +11,12 @@ import mimetypes
 app = Flask(__name__)
 
 MEDIA_ROOT = "media"
-DATABASE_PATH = "videos.db"
+DATABASE_PATH = "data/videos.db"
 
 def init_database():
+    # Criar diretório de dados se não existir
+    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+    os.makedirs(MEDIA_ROOT, exist_ok=True)
     if not os.path.exists(DATABASE_PATH):
        open(DATABASE_PATH, 'w').close()        
     

@@ -13,7 +13,7 @@ class VideoProcessorClient:
         self.root.geometry("550x700")
         self.root.minsize(500, 600)
 
-        self.server_url = "http://localhost:8000"
+        self.server_url = "http://localhost:9981"
         self.selected_file_path = None
         self.thumbnail_cache = {}
         self.placeholder_image = ImageTk.PhotoImage(Image.new('RGB', (120, 80), '#ddd'))

@@ -5,7 +5,10 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "9981:9000"
+      - "9981:9981"
+    volumes:
+      - backend_data:/app/data
+      - backend_media:/app/media
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
@@ -15,3 +18,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+volumes:
+  backend_data:
+  backend_media:
