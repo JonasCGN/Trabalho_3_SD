@@ -1,0 +1,6 @@
+requests>=2.28.0
+tkinter  # Usually included with Python
+sqlite3  # Usually included with Python
+pathlib  # Usually included with Python
+threading  # Usually included with Python
+subprocess  # Usually included with Python
