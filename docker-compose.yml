@@ -1,9 +1,7 @@
-version: '3.8'
 
 services:
-  backend:
+  backend_sd3:
     build: ./backend
-    container_name: backend_sd
     ports:
       - "8000:8000"
     environment:
