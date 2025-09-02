@@ -10,6 +10,8 @@ import ssl
 
 # Desabilitar avisos de SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# url_server = "https://api_sd3.kuatech.com.br"
+url_server = "http://127.0.0.1:9981"
 
 class VideoProcessorClient:
     def __init__(self, root):
@@ -18,7 +20,7 @@ class VideoProcessorClient:
         self.root.geometry("550x700")
         self.root.minsize(500, 600)
 
-        self.server_url = "https://api_sd3.kuatech.com.br"
+        self.server_url = url_server
         self.selected_file_path = None
         self.thumbnail_cache = {}
         self.placeholder_image = ImageTk.PhotoImage(Image.new('RGB', (120, 80), '#ddd'))

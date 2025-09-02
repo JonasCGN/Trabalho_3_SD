@@ -7,6 +7,8 @@ import cv2
 from datetime import datetime
 import hashlib
 import mimetypes
+import subprocess
+import numpy as np
 
 app = Flask(__name__)
 
@@ -67,13 +69,31 @@ def get_video_info(video_path):
     return duration, fps, width, height
 
 def apply_filter(input_path, output_path, filter_type):
+    # Passo 1: Extrair áudio do vídeo original
+    temp_audio_path = output_path.replace('.mp4', '_temp_audio.aac')
+    temp_video_path = output_path.replace('.mp4', '_temp_video.mp4')
+    
+    # Extrair áudio usando ffmpeg
+    audio_extract_cmd = [
+        'ffmpeg', '-i', input_path, '-vn', '-acodec', 'copy', 
+        temp_audio_path, '-y'
+    ]
+    
+    try:
+        subprocess.run(audio_extract_cmd, check=True, capture_output=True)
+        has_audio = True
+    except subprocess.CalledProcessError:
+        # Se falhar, o vídeo pode não ter áudio
+        has_audio = False
+    
+    # Passo 2: Processar vídeo com OpenCV (mantendo seu código atual)
     cap = cv2.VideoCapture(input_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    out = cv2.VideoWriter(temp_video_path, fourcc, fps, (width, height))
     
     while True:
         ret, frame = cap.read()
@@ -89,11 +109,44 @@ def apply_filter(input_path, output_path, filter_type):
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             edges = cv2.Canny(gray, 100, 200)
             frame = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+        elif filter_type == 'brightness':
+            frame = cv2.convertScaleAbs(frame, alpha=1.0, beta=50)
+        elif filter_type == 'sepia':
+            # Filtro sepia usando transformação de matriz
+            kernel = np.array([[0.272, 0.534, 0.131],
+                              [0.349, 0.686, 0.168],
+                              [0.393, 0.769, 0.189]])
+            frame = cv2.transform(frame, kernel)
         
         out.write(frame)
     
     cap.release()
     out.release()
+    
+    # Passo 3: Combinar áudio e vídeo usando ffmpeg
+    if has_audio:
+        # Juntar vídeo processado com áudio original
+        combine_cmd = [
+            'ffmpeg', '-i', temp_video_path, '-i', temp_audio_path,
+            '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental',
+            output_path, '-y'
+        ]
+        
+        try:
+            subprocess.run(combine_cmd, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Erro ao combinar áudio e vídeo: {e}")
+            # Se falhar, pelo menos mantenha o vídeo sem áudio
+            os.rename(temp_video_path, output_path)
+    else:
+        # Se não há áudio, apenas renomeie o vídeo processado
+        os.rename(temp_video_path, output_path)
+    
+    # Limpar arquivos temporários
+    if os.path.exists(temp_audio_path):
+        os.remove(temp_audio_path)
+    if os.path.exists(temp_video_path):
+        os.remove(temp_video_path)
 
 def generate_thumbnail(video_path, thumb_path):
     cap = cv2.VideoCapture(video_path)
