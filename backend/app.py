@@ -25,6 +25,8 @@ def init_database():
     
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
+    
+    # Criar tabela com estrutura nova
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS videos (
             id TEXT PRIMARY KEY,
@@ -44,6 +46,19 @@ def init_database():
             deleted_at TEXT
         )
     ''')
+    
+    # Verificar se as colunas novas existem e adicionar se necessário
+    cursor.execute("PRAGMA table_info(videos)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    if 'is_deleted' not in columns:
+        cursor.execute('ALTER TABLE videos ADD COLUMN is_deleted INTEGER DEFAULT 0')
+        print("Adicionada coluna is_deleted")
+    
+    if 'deleted_at' not in columns:
+        cursor.execute('ALTER TABLE videos ADD COLUMN deleted_at TEXT')
+        print("Adicionada coluna deleted_at")
+    
     conn.commit()
     conn.close()
 
