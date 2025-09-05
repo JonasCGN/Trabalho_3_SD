@@ -19,6 +19,7 @@ def init_database():
     # Criar diretório de dados se não existir
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     os.makedirs(MEDIA_ROOT, exist_ok=True)
+    os.makedirs(os.path.join(MEDIA_ROOT, "trash"), exist_ok=True)
     if not os.path.exists(DATABASE_PATH):
        open(DATABASE_PATH, 'w').close()        
     
@@ -38,7 +39,9 @@ def init_database():
             filter TEXT,
             created_at TEXT,
             path_original TEXT,
-            path_processed TEXT
+            path_processed TEXT,
+            is_deleted INTEGER DEFAULT 0,
+            deleted_at TEXT
         )
     ''')
     conn.commit()
@@ -220,10 +223,10 @@ def upload_video():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO videos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO videos VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (video_id, original_name, original_ext, mime_type, size_bytes,
           duration, fps, width, height, filter_type, created_at.isoformat(),
-          original_path, processed_path))
+          original_path, processed_path, 0, None))
     conn.commit()
     conn.close()
     
@@ -233,7 +236,7 @@ def upload_video():
 def list_videos():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM videos ORDER BY created_at DESC')
+    cursor.execute('SELECT * FROM videos WHERE is_deleted = 0 ORDER BY created_at DESC')
     videos = cursor.fetchall()
     conn.close()
     
@@ -304,6 +307,54 @@ def get_thumbnail(video_id, thumb_type):
                 return send_file(thumb_path)
     
     return jsonify({'error': 'Thumbnail not found'}), 404
+
+@app.route('/videos/<video_id>/delete', methods=['POST'])
+def move_to_trash(video_id):
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM videos WHERE id LIKE ? AND is_deleted = 0', (f'{video_id}%',))
+    video = cursor.fetchone()
+    
+    if not video:
+        conn.close()
+        return jsonify({'error': 'Video not found or already deleted'}), 404
+    
+    # Dados do vídeo
+    video_full_id = video[0]
+    original_path = video[11]
+    processed_path = video[12]
+    created_at = datetime.fromisoformat(video[10])
+    
+    # Criar estrutura no trash com data de exclusão
+    deleted_at = datetime.now()
+    year = deleted_at.strftime('%Y')
+    month = deleted_at.strftime('%m')
+    day = deleted_at.strftime('%d')
+    
+    # Estrutura: trash/YYYY/MM/DD/UUID/
+    trash_base_path = os.path.join(MEDIA_ROOT, "trash", year, month, day, video_full_id)
+    os.makedirs(trash_base_path, exist_ok=True)
+    
+    try:
+        # Mover todo o diretório do vídeo para o trash
+        video_base_dir = os.path.dirname(os.path.dirname(original_path))
+        trash_video_dir = os.path.join(trash_base_path, "video_data")
+        
+        if os.path.exists(video_base_dir):
+            import shutil
+            shutil.move(video_base_dir, trash_video_dir)
+        
+        # Atualizar banco de dados
+        cursor.execute('UPDATE videos SET is_deleted = 1, deleted_at = ? WHERE id = ?', 
+                      (deleted_at.isoformat(), video_full_id))
+        conn.commit()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Video moved to trash', 'trash_path': trash_base_path})
+        
+    except Exception as e:
+        conn.close()
+        return jsonify({'error': f'Failed to move video to trash: {str(e)}'}), 500
 
 # Template HTML para a interface web
 HTML_TEMPLATE = """
@@ -477,8 +528,13 @@ HTML_TEMPLATE = """
             color: white;
         }
         
-        .btn-secondary:hover {
-            background-color: #545b62;
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background-color: #c82333;
         }
         
         .no-videos {
@@ -550,6 +606,7 @@ HTML_TEMPLATE = """
                         <div class="video-actions">
                             <a href="/download/{{ video[0] }}" class="btn btn-primary">📥 Filtro</a>
                             <a href="/download/{{ video[0] }}/original" class="btn btn-secondary">📄 Original</a>
+                            <button onclick="deleteVideo('{{ video[0] }}')" class="btn btn-danger">🗑️ Excluir</button>
                         </div>
                     </div>
                 </div>
@@ -564,6 +621,28 @@ HTML_TEMPLATE = """
         </div>
         {% endif %}
     </div>
+    
+    <script>
+        function deleteVideo(videoId) {
+            if (confirm('Tem certeza que deseja mover este vídeo para a lixeira?')) {
+                fetch(`/videos/${videoId}/delete`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Vídeo movido para a lixeira!');
+                        location.reload();
+                    } else {
+                        alert('Erro: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('Erro de rede: ' + error);
+                });
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -573,18 +652,18 @@ def index():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
-    # Buscar todos os vídeos
-    cursor.execute('SELECT * FROM videos ORDER BY created_at DESC')
+    # Buscar todos os vídeos ativos
+    cursor.execute('SELECT * FROM videos WHERE is_deleted = 0 ORDER BY created_at DESC')
     videos = cursor.fetchall()
     
     # Calcular estatísticas
-    cursor.execute('SELECT COUNT(*) FROM videos')
+    cursor.execute('SELECT COUNT(*) FROM videos WHERE is_deleted = 0')
     total_videos = cursor.fetchone()[0]
     
-    cursor.execute('SELECT COUNT(DISTINCT filter) FROM videos')
+    cursor.execute('SELECT COUNT(DISTINCT filter) FROM videos WHERE is_deleted = 0')
     total_filters = cursor.fetchone()[0]
     
-    cursor.execute('SELECT SUM(size_bytes) FROM videos')
+    cursor.execute('SELECT SUM(size_bytes) FROM videos WHERE is_deleted = 0')
     total_size = cursor.fetchone()[0] or 0
     total_size_mb = round(total_size / 1024 / 1024, 1)
     
